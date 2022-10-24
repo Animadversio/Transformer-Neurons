@@ -1,13 +1,14 @@
 import torch
 import matplotlib.pyplot as plt
-from core.layer_hook_utils import featureFetcher_module
 from transformers import BertModel, BertConfig, BertTokenizer
+from core.layer_hook_utils import featureFetcher_module
 from core.interp_utils import top_tokens_based_on_activation
 # Initializing a BERT bert-base-uncased style configuration
 configuration = BertConfig()
 
 # Initializing a model from the bert-base-uncased style configuration
-model = BertModel(configuration)
+# model = BertModel(configuration) # BUG not trained
+model = BertModel(configuration).from_pretrained('bert-base-uncased')
 
 # Accessing the model configuration
 configuration = model.config

@@ -5,10 +5,11 @@ from core.layer_hook_utils import featureFetcher_module
 #%%
 tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 # Initializing a GPT2 configuration
-configuration = GPT2Config()
+# configuration = GPT2Config()
 
 # Initializing a model from the configuration
-model = GPT2Model(configuration)
+# model = GPT2Model(configuration) #Bug: this is not a pretrained model
+model = GPT2Model.from_pretrained("gpt2")
 
 # Accessing the model configuration
 configuration = model.config
