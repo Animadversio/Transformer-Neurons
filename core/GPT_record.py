@@ -103,11 +103,17 @@ With horses! I replied: That is a novelty. Will horsemen carry torches and pass 
 Yes, said Polemarchus, and not only so, but a festival will he celebrated at night, which you certainly ought to see. Let us rise soon after supper and see this festival; there will be a gathering of young men, and we will have a good talk. Stay then, and do not be perverse.
 """
 
-layer_num = 12
+layer_num = 0
 tokens, _, fetcher = record_activations_for_text(text, model, tokenizer, layer_num=layer_num)
+acttsr = fetcher[f'GPT2_B{layer_num}_act']
 unit_idx = torch.randint(3000, size=(1,)).item() #2000
 text_hl_thr = highlight_text_quantile(tokens[0],
-                  fetcher[f'GPT2_B{layer_num}_fc'][0, :, unit_idx], tokenizer)
+                  acttsr[0, :, unit_idx], tokenizer)
+topwords, botwords, top_acts, bottom_acts = top_tokens_based_on_activation(acttsr[0, :, unit_idx],
+                            tokens[0], tokenizer, topk=20, bottomk=20)
+print(f"Unit id {unit_idx}")
+print(f"Top words: {topwords} ({top_acts[0]:.3f}-{top_acts[-1]:.3f})")
+print(f"Bottom words: {botwords} ({bottom_acts[0]:.3f}-{bottom_acts[-1]:.3f})")
 print(text_hl_thr)
 
 #%%
@@ -117,17 +123,21 @@ Through his mother, Plato was related to Solon. Plato's mother was Perictione, w
 The exact time and place of Plato's birth are unknown. Based on ancient sources, most modern scholars believe that he was born in Athens or Aegina[c] between 429 and 423 BC, not long after the start of the Peloponnesian War.[d] The traditional date of Plato's birth during the 87th or 88th Olympiad, 428 or 427 BC, is based on a dubious interpretation of Diogenes Laërtius, who says, "When [Socrates] was gone, [Plato] joined Cratylus the Heracleitean and Hermogenes, who philosophized in the manner of Parmenides. Then, at twenty-eight, Hermodorus says, [Plato] went to Euclides in Megara." However, as Debra Nails argues, the text does not state that Plato left for Megara immediately after joining Cratylus and Hermogenes. In his Seventh Letter, Plato notes that his coming of age coincided with the taking of power by the Thirty, remarking, "But a youth under the age of twenty made himself a laughingstock if he attempted to enter the political arena." Thus, Nails dates Plato's birth to 424/423.
 """
 
-layer_num = 0
+layer_num = 11
 tokens, _, fetcher = record_activations_for_text(text, model, tokenizer, layer_num=layer_num)
 acttsr = fetcher[f'GPT2_B{layer_num}_act']
 unit_idx = torch.randint(acttsr.size(2), size=(1,)).item()  # 2000
 text_hl_thr = highlight_text_quantile(tokens[0], acttsr[0, :, unit_idx], tokenizer)
+print(f"Unit id {unit_idx}")
+print(f"Top words: {topwords} ({top_acts[0]:.3f}-{top_acts[-1]:.3f})")
+print(f"Bottom words: {botwords} ({bottom_acts[0]:.3f}-{bottom_acts[-1]:.3f})")
 print(text_hl_thr)
 #%%
 U, S, V = torch.svd(acttsr[0])
 #%%
-pc_idx = torch.randint(V.size(0), size=(1,)).item()
-text_hl_thr = highlight_text_quantile(tokens[0], V[pc_idx, :], tokenizer)
+#pc_idx = torch.randint(V.size(0), size=(1,)).item()
+pc_idx = 3
+text_hl_thr = highlight_text_quantile(tokens[0], -V[pc_idx, :], tokenizer)
 print(text_hl_thr)
 #%%
 
