@@ -26,3 +26,16 @@ def top_tokens_based_on_activation(activation, tokens, tokenizer, topk=5, bottom
     top_words = tokenizer.convert_ids_to_tokens(tokens[topk_idx])  # .decode
     bottom_words = tokenizer.convert_ids_to_tokens(tokens[bottomk_idx])  # .decode
     return top_words, bottom_words, top_acts, bottom_acts  # " ".join(text)
+
+
+import torch
+def topk_decode(logits, tokenizer, k=10):
+    val, ids = torch.topk(logits, k, dim=-1)
+    toks = []
+    if len(ids.shape) == 1:
+        ids = ids.unsqueeze(0)
+
+    for i in range(len(ids)):
+        toks.append(tokenizer.convert_ids_to_tokens(ids[i]))
+
+    return toks, val.numpy()
