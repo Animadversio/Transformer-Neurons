@@ -10,7 +10,6 @@ from transformers import pipeline
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # Initializing a model from the bert-base-uncased style configuration
 model = BertForMaskedLM.from_pretrained("bert-base-uncased")
-#%%
 model.requires_grad_(False)
 model.eval()
 #%%
@@ -19,9 +18,6 @@ tokens = tokenizer.encode(text, return_tensors='pt')
 with torch.no_grad():
     outputs = model(tokens, output_hidden_states=True)
 #%%
-last_hidden = model.bert(tokens)[0]
-#%%
-logits = model.cls(last_hidden)  # outputs.hidden_states[-1]
 #%%
 def topk_decode(logits, tokenizer, k=10):
     val, ids = torch.topk(logits, k, dim=-1)
@@ -34,8 +30,9 @@ def topk_decode(logits, tokenizer, k=10):
 
     return toks, val.numpy()
 
-
-topk_decode(logits[0, :], tokenizer)
+# last_hidden = model.bert(tokens)[0]
+# logits = model.cls(last_hidden)  # outputs.hidden_states[-1]
+# topk_decode(logits[0, :], tokenizer)
 #%%
 logits = outputs.logits
 for i in range(logits.size(1)):

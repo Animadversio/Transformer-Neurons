@@ -17,8 +17,6 @@ model = BertModel.from_pretrained("bert-base-uncased")
 model.requires_grad_(False)
 model.eval()
 #%%
-input_words, maxprob, max_wordid = argmax_decode(masktok_dist[0], tokenizer)
-#%%
 inputs_embeds = torch.randn(1, 10, 768)
 model.forward(inputs_embeds=inputs_embeds, token_type_ids=None)  # token_type_ids
 #%%
@@ -53,7 +51,7 @@ for i in range(25):
 """Still very hard to optimize and hard to interpret, not very stable evolution"""
 #%%
 fetcher.cleanup()
-#%%
+#%% Utils to decode the optimized input embedding
 def inputembed2dist(model, input_embeds, ):
     embW = model.embeddings.word_embeddings.weight / norm_bound
     input_word_dist = torch.einsum('BTH,WH->BTW', input_embeds
@@ -88,8 +86,8 @@ unitact_emb = fetcher.activations[layerkey][0, :, unitid]
 #%%
 embW = model.embeddings.word_embeddings.weight
 input_word_dist = torch.einsum('BTH,WH->BTW', inputs_embeds.detach(), embW)
-#%%
+
+#%%  Try to visualize the embedding matrix geometry
 embnorm = embW.norm(dim=1,keepdim=True)
 distmat = embnorm**2 + embnorm.T**2 - 2 * (embW @ embW.T)
 torch.topk(distmat, 10, dim=-1)
-torch.
