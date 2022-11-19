@@ -136,7 +136,7 @@ def bert_degenerate_cmp(model, tokenizer, text, clamp_layer, clamp_token_loc,
     Add noise to the input word embeddings at the noise_loc
     """
     inputs_embeds_degrade = inputs_embeds.clone()
-    inputs_embeds_degrade[:, noise_loc, :] += torch.randn(1, 1, 768) * noise_std
+    inputs_embeds_degrade[:, noise_loc, :] += torch.randn_like(inputs_embeds_degrade[:, noise_loc, :]) * noise_std
     with torch.no_grad():
         outputs_degrade = model(inputs_embeds=inputs_embeds_degrade, output_hidden_states=True)
     """
@@ -177,11 +177,14 @@ def bert_degenerate_cmp(model, tokenizer, text, clamp_layer, clamp_token_loc,
     return outputs_free, outputs_degrade, outputs_clamp
 
 
-text = "Vatican is located in the city of [MASK]."
-# text = "The Space Needle is located in downtown [MASK]."
+# text = "Vatican is located in the city of [MASK]."
+text = "The Space Needle is located in downtown [MASK]."
+token_ids = tokenizer.encode(text)
+for clamp_layer in range(12):
+    for clamp_token_loc in range(8):
 outputs_free, outputs_noise, outputs_clamp = bert_degenerate_cmp(model, tokenizer, text,
-                    clamp_layer=[1], clamp_token_loc=[1],
-                    noise_loc=[1,], noise_std=0.2,)
+                    clamp_layer=[10], clamp_token_loc=[2,],
+                    noise_loc=[1, 2, 3], noise_std=0.2,)
 #%%
 
 
