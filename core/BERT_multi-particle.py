@@ -132,12 +132,6 @@ def bert_degenerate_cmp(model, tokenizer, text, clamp_layer, clamp_token_loc,
     inputs_embeds = model.bert.embeddings.word_embeddings(token_ids)
     with torch.no_grad():
         outputs_free = model(inputs_embeds=inputs_embeds, output_hidden_states=True)
-
-    logits_free = model.cls(outputs_free.hidden_states[-1][:, mask_tok_loc, :])  #
-    maxval, maxids = torch.topk(logits_free, 1, dim=-1)
-    print(maxids, maxval)
-    print(logits_free.shape)
-    print("Free", tokenizer.decode(maxids[0,0]), maxval[0].item())
     """
     Add noise to the input word embeddings at the noise_loc
     """
@@ -165,10 +159,15 @@ def bert_degenerate_cmp(model, tokenizer, text, clamp_layer, clamp_token_loc,
     for hook_h in hook_hs:
         hook_h.remove()
 
+    logits_free = model.cls(outputs_free.hidden_states[-1][:, mask_tok_loc, :])  #
+    maxval, maxids = torch.topk(logits_free, 1, dim=-1)
+    print(maxids, maxval)
+    print(logits_free.shape)
+    print("Free", tokenizer.decode(maxids[0,0]), f"({maxids.item()}) logprob {maxval[0].item():.3f}", )
     logits_degrade = model.cls(outputs_degrade.hidden_states[-1][:, mask_tok_loc, :])  #
-    print("Degrade", logits_degrade[0, 0, maxids[0, 0]])
+    print(f"Degrade {logits_degrade[0, 0, maxids[0, 0]].item():.3f}", )
     logits_clamp = model.cls(outputs_clamp.hidden_states[-1][:, mask_tok_loc, :])  #
-    print("Clamp", logits_clamp[0, 0, maxids[0, 0]])
+    print(f"Clamp {logits_clamp[0, 0, maxids[0, 0]].item():.3f}", )
     # print("BERT without clamp")
     # top_k_decode_layers(model, tokenizer, outputs_free.hidden_states, mask_tok_loc, k=8)
     # print(f"BERT with input noise at {noise_loc} and std {noise_std}")
@@ -178,11 +177,11 @@ def bert_degenerate_cmp(model, tokenizer, text, clamp_layer, clamp_token_loc,
     return outputs_free, outputs_degrade, outputs_clamp
 
 
-# text = "Vatican is located in the city of [MASK]."
-text = "The Space Needle is located in downtown [MASK]."
+text = "Vatican is located in the city of [MASK]."
+# text = "The Space Needle is located in downtown [MASK]."
 outputs_free, outputs_noise, outputs_clamp = bert_degenerate_cmp(model, tokenizer, text,
-                    clamp_layer=[3], clamp_token_loc=[3],
-                    noise_loc=[1, 2, 3], noise_std=0.2,)
+                    clamp_layer=[1], clamp_token_loc=[1],
+                    noise_loc=[1,], noise_std=0.2,)
 #%%
 
 
