@@ -12,9 +12,9 @@ model = BertModel(configuration).from_pretrained('bert-base-uncased')
 
 # Accessing the model configuration
 configuration = model.config
-
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-#%%
+
+
 def record_activations_for_text(text, model, tokenizer, layer_num=11):
     fetcher = featureFetcher_module()
     fetcher.record_module(model.encoder.layer[layer_num].intermediate.intermediate_act_fn, f"BERT_B{layer_num}_act")
@@ -27,6 +27,7 @@ def record_activations_for_text(text, model, tokenizer, layer_num=11):
     for k, v in fetcher.activations.items():
         print(k, v.shape)
     return tokens, outputs, fetcher
+
 
 from colorama import Fore, Back, Style
 def highlight_text_top_words(tokens, activation, tokenizer):
