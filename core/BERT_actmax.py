@@ -88,6 +88,6 @@ embW = model.embeddings.word_embeddings.weight
 input_word_dist = torch.einsum('BTH,WH->BTW', inputs_embeds.detach(), embW)
 
 #%%  Try to visualize the embedding matrix geometry
-embnorm = embW.norm(dim=1,keepdim=True)
+embnorm = embW.norm(dim=1, keepdim=True)
 distmat = embnorm**2 + embnorm.T**2 - 2 * (embW @ embW.T)
 torch.topk(distmat, 10, dim=-1)
