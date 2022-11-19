@@ -2,6 +2,7 @@
 Set up masked language model task
 See the effect of certain internal representation on the behavior.
 """
+import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from transformers import BertModel, BertConfig, BertTokenizer, BertForMaskedLM
@@ -12,12 +13,6 @@ tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 model = BertForMaskedLM.from_pretrained("bert-base-uncased")
 model.requires_grad_(False)
 model.eval()
-#%%
-text = "The quick brown fox [MASK] over the lazy dog."
-tokens = tokenizer.encode(text, return_tensors='pt')
-with torch.no_grad():
-    outputs = model(tokens, output_hidden_states=True)
-#%%
 #%%
 def topk_decode(logits, tokenizer, k=10):
     val, ids = torch.topk(logits, k, dim=-1)
@@ -30,19 +25,35 @@ def topk_decode(logits, tokenizer, k=10):
 
     return toks, val.numpy()
 
-# last_hidden = model.bert(tokens)[0]
-# logits = model.cls(last_hidden)  # outputs.hidden_states[-1]
-# topk_decode(logits[0, :], tokenizer)
 #%%
-logits = outputs.logits
-for i in range(logits.size(1)):
-    toks, vals = topk_decode(logits[0, i, :], tokenizer)
-    print(toks, "\n", vals)
+text = "The quick brown fox [MASK] over the lazy dog."
+# text = "Vatican is located in the city of [MASK]."
+# text = "The forbidden palace is located in the city of [MASK]."
+# text = "New York is the [MASK] of the US."
+# text = "Vatican is located on the [MASK] part of Italy."
+# text = "Donald Trump is the [MASK] of the US."
+# text = "Donald Trump is the [MASK] of France."
+# text = "Louis IX is the [MASK] of France."
+# text = "Jinping Xi is the [MASK] of China."
+# text = "Da Vinci is a [MASK] in Renaissance."
+# text = "Leonardo Da Vinci is a [MASK] in Renaissance."
+tokens = tokenizer.encode(text, return_tensors='pt')
+with torch.no_grad():
+    outputs = model(tokens, output_hidden_states=True)
 #%%
-logits = model.cls(outputs.hidden_states[2])  #
-for i in range(logits.size(1)):
-    toks, vals = topk_decode(logits[0, i, :], tokenizer)
-    print(toks, )  # "\n", vals)
+# logits = outputs.logits
+# for i in range(logits.size(1)):
+#     toks, vals = topk_decode(logits[0, i, :], tokenizer)
+#     print(toks, "\n", np.round(vals,3))
+#%%
+print(text)
+for li, hidden in enumerate(outputs.hidden_states):
+    logits = model.cls(hidden)  #
+    maskid = torch.where(tokens == tokenizer.mask_token_id)[1]
+    toks, vals = topk_decode(logits[0, maskid, :], tokenizer)
+    print(f"Layer {li:02d}", toks[0], )  # "\n", vals)
+    # print(f"Layer {li:02d}", "\t".join(toks[0]), )  # "\n", vals)
+
 #%%
 toks, vals = topk_decode(logits[0, 5, :], tokenizer)
 print(toks, )
