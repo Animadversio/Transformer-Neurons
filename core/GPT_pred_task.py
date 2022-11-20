@@ -27,7 +27,9 @@ all_hidden = (outputs.hidden_states)
 for li in range(len(all_hidden)):
     logits_lyr = model.lm_head(all_hidden[li])
     topvals, topidxs = torch.topk(logits_lyr[0, -1, ], 10)
-    print(li, tokenizer.decode(topidxs.T))
+    toptokens = tokenizer.convert_ids_to_tokens(topidxs)
+    print(li, [tok.replace("Ġ","") for tok in toptokens])
+    # print(li, [tok for tok in toptokens])
 #%%
 maxlogit, maxidx = logits.max(dim=-1)
 #%%

@@ -34,6 +34,8 @@ text = "Vatican is located in the city of [MASK]."
 # text = "The forbidden palace is located in the city of [MASK]."
 # text = "New York is the [MASK] of the US."
 # text = "Vatican is located on the [MASK] part of Italy."
+text = "The [MASK] is located in downtown Seattle."
+text = "The [MASK] is located in the city of Rome."
 token_ids = tokenizer.encode(text, return_tensors='pt')
 mask_loc = torch.where(token_ids[0] == tokenizer.mask_token_id)[0]
 with torch.no_grad():
@@ -41,6 +43,7 @@ with torch.no_grad():
 
 #% Layer output across the layers
 # print("Layer order: ", layer_order.tolist())
+k = 8
 print(f"Decoded top {k} tokens for the masked word across the layers")
 # mask_loc = token_ids[0].tolist().index(tokenizer.mask_token_id)
 top_k_decode_layers(model, tokenizer, outputs.hidden_states, mask_loc, k=8)
@@ -117,6 +120,7 @@ top_k_decode_layers(model, tokenizer, outputs_free.hidden_states, mask_tok_loc, 
 print("BERT with hidden states clamp")
 top_k_decode_layers(model, tokenizer, outputs_clamp.hidden_states, mask_tok_loc, k=8)
 #%%
+from torch.nn.functional import softmax
 def get_clamp_hook(fixed_hidden_states, fix_mask):
     def clamp_hidden_hook(module, input, output):
         """Substitute the output of certain layer as a fixed representation"""
@@ -124,8 +128,9 @@ def get_clamp_hook(fixed_hidden_states, fix_mask):
     return clamp_hidden_hook
 
 
-def bert_degenerate_cmp(model, tokenizer, text, clamp_layer, clamp_token_loc,
-                        noise_loc, noise_std=0.01,):
+def bert_degenerate_cmp(model, tokenizer, text,
+                        clamp_layer, clamp_token_loc,
+                        noise_loc, noise_std=0.01, noise_batch=1):
     token_ids = tokenizer.encode(text, return_tensors='pt')
     mask_tok_loc = torch.where(token_ids[0] == tokenizer.mask_token_id)[0]
     # token_ids,
@@ -135,7 +140,7 @@ def bert_degenerate_cmp(model, tokenizer, text, clamp_layer, clamp_token_loc,
     """
     Add noise to the input word embeddings at the noise_loc
     """
-    inputs_embeds_degrade = inputs_embeds.clone()
+    inputs_embeds_degrade = inputs_embeds.repeat(noise_batch, 1, 1)
     inputs_embeds_degrade[:, noise_loc, :] += torch.randn_like(inputs_embeds_degrade[:, noise_loc, :]) * noise_std
     with torch.no_grad():
         outputs_degrade = model(inputs_embeds=inputs_embeds_degrade, output_hidden_states=True)
@@ -146,7 +151,7 @@ def bert_degenerate_cmp(model, tokenizer, text, clamp_layer, clamp_token_loc,
     hook_hs = []
     for layeri in clamp_layer:
         target_module = model.bert.encoder.layer[layeri]
-        fixed_hidden_states = outputs_free.hidden_states[layeri+1]
+        fixed_hidden_states = outputs_free.hidden_states[layeri+1].expand(noise_batch, -1, -1)
         fix_mask = torch.zeros(fixed_hidden_states.shape, dtype=torch.bool)
         fix_mask[:, clamp_token_loc, :] = 1
         hook_fun = get_clamp_hook(fixed_hidden_states, fix_mask)
@@ -161,32 +166,89 @@ def bert_degenerate_cmp(model, tokenizer, text, clamp_layer, clamp_token_loc,
 
     logits_free = model.cls(outputs_free.hidden_states[-1][:, mask_tok_loc, :])  #
     maxval, maxids = torch.topk(logits_free, 1, dim=-1)
-    print(maxids, maxval)
-    print(logits_free.shape)
-    print("Free", tokenizer.decode(maxids[0,0]), f"({maxids.item()}) logprob {maxval[0].item():.3f}", )
+    maxids = maxids.item()
+    # print(maxids, maxval)
+    # print(logits_free.shape)
+    print("Free", tokenizer.decode([maxids]), f"({maxids}) logprob {maxval[0].item():.3f}", )
     logits_degrade = model.cls(outputs_degrade.hidden_states[-1][:, mask_tok_loc, :])  #
-    print(f"Degrade {logits_degrade[0, 0, maxids[0, 0]].item():.3f}", )
+    print(f"Degrade {logits_degrade[:, 0, maxids].mean().item():.3f}", )
     logits_clamp = model.cls(outputs_clamp.hidden_states[-1][:, mask_tok_loc, :])  #
-    print(f"Clamp {logits_clamp[0, 0, maxids[0, 0]].item():.3f}", )
+    print(f"Clamp {logits_clamp[:, 0, maxids].mean().item():.3f}", )
     # print("BERT without clamp")
     # top_k_decode_layers(model, tokenizer, outputs_free.hidden_states, mask_tok_loc, k=8)
     # print(f"BERT with input noise at {noise_loc} and std {noise_std}")
     # top_k_decode_layers(model, tokenizer, outputs_degrade.hidden_states, mask_tok_loc, k=8)
     # print(f"BERT with hidden states clamp at {clamp_layer} layer, {clamp_token_loc} loc")
     # top_k_decode_layers(model, tokenizer, outputs_clamp.hidden_states, mask_tok_loc, k=8)
-    return outputs_free, outputs_degrade, outputs_clamp
+    return outputs_free, outputs_degrade, outputs_clamp, \
+           logits_free, logits_degrade, logits_clamp
 
-
+# model.cpu()
 # text = "Vatican is located in the city of [MASK]."
 text = "The Space Needle is located in downtown [MASK]."
 token_ids = tokenizer.encode(text)
+normal_locs = [loc for loc, idx in enumerate(token_ids)
+                if not idx in tokenizer.all_special_ids]
+data_dict = {}
 for clamp_layer in range(12):
-    for clamp_token_loc in range(8):
-outputs_free, outputs_noise, outputs_clamp = bert_degenerate_cmp(model, tokenizer, text,
-                    clamp_layer=[10], clamp_token_loc=[2,],
-                    noise_loc=[1, 2, 3], noise_std=0.2,)
-#%%
+    for clamp_token_loc in normal_locs:
+        outputs_clean, outputs_noise, outputs_clamp, \
+        logits_clean, logits_degrade, logits_clamp = bert_degenerate_cmp(model, tokenizer, text,
+                            clamp_layer=[clamp_layer], clamp_token_loc=[clamp_token_loc, ],
+                            noise_loc=[1, 2, 3], noise_std=0.2, noise_batch=10)
+        maxidx = logits_clean.argmax()
+        prob_clean = softmax(logits_clean, dim=-1)
+        prob_degrade = softmax(logits_degrade, dim=-1)
+        prob_clamp = softmax(logits_clamp, dim=-1)
+        data_dict[(clamp_layer, clamp_token_loc)] = {"degrade": logits_degrade[:, 0, maxidx].mean().item(),
+                                                    "clamp": logits_clamp[:, 0, maxidx].mean().item(),
+                                                    "clean": logits_clean[:, 0, maxidx].mean().item(),
+                                                     "prob_clean": prob_clean[:, 0, maxidx].mean().item(),
+                                                     "prob_degrade": prob_degrade[:, 0, maxidx].mean().item(),
+                                                     "prob_clamp": prob_clamp[:, 0, maxidx].mean().item(),}
 
+#%%
+import numpy as np
+import seaborn as sns
+import pandas as pd
+df = pd.DataFrame(data_dict).T #.plot()
+df.reset_index(inplace=True)
+df.rename(columns={"level_0": "layer", "level_1": "position"}, inplace=True)
+degrade_map = df.pivot(index="layer", columns="position", values="degrade") # .plot()
+clamp_map = df.pivot(index="layer", columns="position", values="clamp")
+degrprob_map = df.pivot(index="layer", columns="position", values="prob_degrade") # .plot()
+clamprob_map = df.pivot(index="layer", columns="position", values="prob_clamp")
+
+#%%
+normal_tokens = tokenizer.convert_ids_to_tokens(
+    [token_ids[loc] for loc in normal_locs])
+# sns.heatmap(degrade_map, annot=True, fmt=".1f")
+# sns.heatmap(clamp_map, annot=True, fmt=".1f")
+plt.figure(figsize=(7, 4.5))
+sns.heatmap((clamp_map - degrade_map).T, annot=True, fmt=".1f")
+plt.axis("image")
+plt.yticks(ticks=0.5 + np.arange(len(normal_tokens)),
+           labels=normal_tokens, )
+plt.tight_layout()
+plt.title("logits difference: clamp - degrade")
+plt.savefig(f"figs/clamp_degrade_diff_logit_{text.replace(' ','-')}.pdf")
+plt.savefig(f"figs/clamp_degrade_diff_logit_{text.replace(' ','-')}.png")
+plt.show()
+
+plt.figure(figsize=(7, 4.5))
+sns.heatmap((clamprob_map - degrprob_map).T, annot=True, fmt=".1f")
+plt.axis("image")
+plt.yticks(ticks=0.5 + np.arange(len(normal_tokens)),
+           labels=normal_tokens, )
+plt.tight_layout()
+plt.title("prob difference: clamp - degrade")
+plt.savefig(f"figs/clamp_degrade_diff_prob_{text.replace(' ','-')}.pdf")
+plt.savefig(f"figs/clamp_degrade_diff_prob_{text.replace(' ','-')}.png")
+plt.show()
+
+# sns.heatmap((clamprob_map - degrprob_map).T, annot=True, fmt=".1f")
+# sns.heatmap(clamp_map, annot=True, fmt=".1f")
+# degrade_map.plot()
 
 #%%
 # def bert_forward(model, hidden_states):
