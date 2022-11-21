@@ -1,6 +1,8 @@
 """
 Understand BERT and GPT via gradient tricks
 """
+import os
+from os.path import join
 import torch
 import torch.nn as nn  # import ModuleList
 from tqdm import tqdm
@@ -22,7 +24,8 @@ tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 model.requires_grad_(False)
 model.eval()
 #%%
-def get_causal_grad_hook(key):
+savedir = r"F:\insilico_exps\BERT_hessian"
+def get_causal_grad_hook(key, gradvar_store):
     def causal_grad(module, input, output):
         """Substitute the output of certain layer as a fixed representation"""
         gradvar = torch.zeros_like(output[0].data, requires_grad=True)
@@ -33,80 +36,120 @@ def get_causal_grad_hook(key):
     return causal_grad
 
 
-text = "Vatican is located in the city of [MASK]."
-# text = "The Space Needle is located in downtown [MASK]."
-gradvar_store = {}  # store the gradient variable, layer num as key
-hook_hs = []
-for layeri in range(12):
-    target_module = model.bert.encoder.layer[layeri]
-    hook_fun = get_causal_grad_hook(layeri)  # get_clamp_hook(fixed_hidden_states, fix_mask)
-    hook_h = target_module.register_forward_hook(hook_fun)
-    hook_hs.append(hook_h)
+def forward_gradhook_vars(model, token_ids):
+    gradvar_store = {}  # store the gradient variable, layer num as key
+    hook_hs = []
+    for layeri in range(12):
+        target_module = model.bert.encoder.layer[layeri]
+        hook_fun = get_causal_grad_hook(layeri, gradvar_store)  # get_clamp_hook(fixed_hidden_states, fix_mask)
+        hook_h = target_module.register_forward_hook(hook_fun)
+        hook_hs.append(hook_h)
 
+    # with torch.no_grad():
+    try:
+        outputs = model(token_ids, output_hidden_states=True)
+    except:
+        # Need to remove hooks or it will keep raising error.
+        for hook_h in hook_hs:
+            hook_h.remove()
+        raise
+    else:
+        for hook_h in hook_hs:
+            hook_h.remove()
+        return outputs, gradvar_store
+
+text = "The Space Needle is located in downtown [MASK]."
+# text = "Vatican is located in the city of [MASK]."
 token_ids = tokenizer.encode(text, return_tensors='pt')
-# with torch.no_grad():
-outputs_clamp = model(token_ids, output_hidden_states=True)
-
-for hook_h in hook_hs:
-    hook_h.remove()
-
-#%% Get the top token and its logit
+tokens = tokenizer.convert_ids_to_tokens(token_ids[0])
 mask_loc = torch.where(token_ids[0] == tokenizer.mask_token_id)[0]
-max_ids = torch.argmax(outputs_clamp.logits[0, mask_loc, :])
-maxlogit = outputs_clamp.logits[0, mask_loc, max_ids]
+text_label = "-".join(text.split(" ")[:3])
+expdir = join(savedir, text_label)
+os.makedirs(expdir, exist_ok=True)
+print("Experiment dir: ", expdir)
+outputs, gradvar_store = forward_gradhook_vars(model, token_ids)
+#% Get the top token and its logit
+max_ids = torch.argmax(outputs.logits[0, mask_loc, :])
+maxlogit = outputs.logits[0, mask_loc, max_ids]
+print(text)
 print(f"Top token is '{tokenizer.convert_ids_to_tokens(max_ids.item())}', with logit {maxlogit.item():.3f}")
-#%% Compute first order gradient
+torch.save(outputs, join(expdir, "model_outputs_hiddens.pt"))
+#% Compute first order gradient
 grad_maps = torch.autograd.grad(maxlogit,
                 [*gradvar_store.values()], retain_graph=True,)  #  create_graph=True
 grad_map_tsr = torch.cat(grad_maps, dim=0)
-grad_map_layers = grad_map_tsr.norm(dim=-1) #torch.cat(grad_map_layers, dim=0)
-#%% Compute 1st order gradient with 2nd order graph set up.
-grad_maps_grad = torch.autograd.grad(maxlogit,
-                [*gradvar_store.values()], retain_graph=True, create_graph=True)  #  create_graph=True
-#%% Compute the 2nd order gradient to the hidden states.
-hiddim = grad_maps_grad[0].size(-1)
-seqdim = grad_maps_grad[0].size(1)
-grad_maps_hess_all = []
-for i in tqdm(range(seqdim)):
-    # inspired by https://github.com/pytorch/pytorch/issues/7786#issuecomment-391612473
-    grad_maps_hess_B = torch.autograd.grad(grad_maps_grad[0][0, i, :],
-                gradvar_store[0], grad_outputs=torch.eye(768),  # this is a trick to avoid sum over outputs
-                is_grads_batched=True, retain_graph=True, create_graph=False, )  #
-    print(grad_maps_hess_B[0].shape)
-    grad_maps_hess_all.append(grad_maps_hess_B[0])
-grad_maps_hess_all = torch.stack(grad_maps_hess_all, dim=0)
-print(grad_maps_hess_all.shape)
-#  Obsolete, not efficient
-# grad_maps_hess = []
-# for i in tqdm(range(hiddim)):
-#     grad_maps_part = torch.autograd.grad(grad_maps_grad[0][0, 1, i],
-#                 gradvar_store[0], retain_graph=True, create_graph=False)  #
-#     grad_maps_hess.append(grad_maps_part[0])
-# grad_maps_hess = torch.stack(grad_maps_hess, dim=0)
-#%% Visualize the first order gradient magnitude
-tokens = tokenizer.convert_ids_to_tokens(token_ids[0])
-sns.heatmap(grad_map_layers.detach().numpy().T)
+grad_map_norm_layers = grad_map_tsr.norm(dim=-1)  # torch.cat(grad_map_layers, dim=0)
+torch.save(grad_map_tsr, join(expdir, "grad_map_tsr.pt"))
+#% Visualize the first order gradient magnitude
+sns.heatmap(grad_map_norm_layers.T)
 plt.gca().set_yticklabels(tokens, rotation=0)
 plt.xlabel("Layer")
 plt.title("Gradient L2 norm heat map")
 plt.tight_layout()
+plt.savefig(join(expdir, f'grad_norm_map_layers.png'))
+plt.savefig(join(expdir, f'grad_norm_map_layers.pdf'))
 plt.show()
+#%% Compute 1st order gradient with 2nd order graph set up.
+grad_maps_grad = torch.autograd.grad(maxlogit,
+                [*gradvar_store.values()], retain_graph=True, create_graph=True)  #  create_graph=True
+#%% Compute the 2nd order gradient to the hidden states.
+Hlayer = 0
+for Hlayer in range(12):
+    hiddim = grad_maps_grad[Hlayer].size(-1)
+    seqdim = grad_maps_grad[Hlayer].size(1)
+    grad_maps_hess_all = []
+    for i in tqdm(range(seqdim)):
+        # inspired by
+        # https://github.com/pytorch/pytorch/issues/7786#issuecomment-391612473
+        grad_maps_hess_B = torch.autograd.grad(grad_maps_grad[Hlayer][0, i, :],
+                    gradvar_store[Hlayer], grad_outputs=torch.eye(hiddim),  # this is a trick to avoid sum over outputs
+                    is_grads_batched=True, retain_graph=True, create_graph=False, )  #
+        print(grad_maps_hess_B[0].shape)
+        grad_maps_hess_all.append(grad_maps_hess_B[0])
+    grad_maps_hess_all = torch.stack(grad_maps_hess_all, dim=0)
+    print(grad_maps_hess_all.shape)
+    torch.save(grad_maps_hess_all, join(expdir, f"hessian_map_tsr_layer{Hlayer}.pt"))
+    #  Obsolete, not efficient
+    # grad_maps_hess = []
+    # for i in tqdm(range(hiddim)):
+    #     grad_maps_part = torch.autograd.grad(grad_maps_grad[0][0, 1, i],
+    #                 gradvar_store[0], retain_graph=True, create_graph=False)  #
+    #     grad_maps_hess.append(grad_maps_part[0])
+    # grad_maps_hess = torch.stack(grad_maps_hess, dim=0)
+    #%%
+    """ Note on matrix norm order 
+    2: matrix max singlur value norm
+    "nuc": matrix sum singlur value / nuclear norm
+    "fro": matrix with L2 vector norm / frobenius norm
+    """
+    matnorm_ord = 2
+    for matnorm_ord in [2, "nuc", "fro"]:
+        grad_hess_norm_map = torch.linalg.norm(
+                grad_maps_hess_all[:, :, 0, :, :],
+                dim=(1, 3), ord=matnorm_ord)
+        sns.heatmap(grad_hess_norm_map)
+        plt.axis('image')
+        plt.gca().set_xticklabels(tokens, rotation=90)
+        plt.gca().set_yticklabels(tokens, rotation=0)
+        plt.title(f'Matrix {matnorm_ord} norm of Hessian of the logit of the top token')
+        plt.tight_layout()
+        plt.savefig(join(expdir, f'grad_hess_{matnorm_ord}_norm_map_layer{Hlayer}.png'))
+        plt.savefig(join(expdir, f'grad_hess_{matnorm_ord}_norm_map_layer{Hlayer}.pdf'))
+        plt.show()
 #%%
-""" Note on matrix norm order 
-2: matrix max singlur value norm
-"nuc": matrix sum singlur value / nuclear norm
-"fro": matrix with L2 vector norm / frobenius norm
-"""
-matnorm_ord = 2
-grad_hess_norm_map = torch.linalg.norm(
-        grad_maps_hess_all[:, :, 0, :, :],
-        dim=(1, 3), ord=matnorm_ord)
-sns.heatmap(grad_hess_norm_map)
-plt.axis('image')
+sns.heatmap(torch.linalg.norm(
+            grad_maps_hess_all[:, :, 0, :, :],
+            dim=(1, 3), ord="fro"))
 plt.gca().set_xticklabels(tokens, rotation=90)
 plt.gca().set_yticklabels(tokens, rotation=0)
-plt.title(f'Matrix {matnorm_ord} norm Hessian of the logit of the top token')
-plt.tight_layout()
+plt.axis('image')
+plt.show()
+#%%
+sns.heatmap(grad_map_norm_layers[10][:, None] @
+            grad_map_norm_layers[10][None, :])
+plt.gca().set_xticklabels(tokens, rotation=90)
+plt.gca().set_yticklabels(tokens, rotation=0)
+plt.axis('image')
 plt.show()
 #%%
 print(grad_maps_hess)
