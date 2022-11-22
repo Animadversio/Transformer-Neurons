@@ -58,8 +58,8 @@ def forward_gradhook_vars(model, token_ids):
         return outputs, gradvar_store
 
 
-text = "The Space Needle is located in downtown"
-# text = "Vatican is located in the city of"
+# text = "The Space Needle is located in downtown"
+text = "Vatican is located in the city of"
 token_ids = tokenizer.encode(text, return_tensors='pt')
 tokens = tokenizer.convert_ids_to_tokens(token_ids[0])
 tokens = [t.replace("Ġ", "") for t in tokens]
