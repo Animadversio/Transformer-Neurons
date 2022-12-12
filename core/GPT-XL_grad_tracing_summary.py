@@ -129,8 +129,10 @@ gradmap_tsr.mean(dim=0)
 import seaborn as sns
 import matplotlib.pyplot as plt
 from core.plot_utils import saveallforms
-rec_labels = ["1st token", "Subject 1st", "Subject 2nd last", "Subject last",
-              "Subsequent", "2nd last token", "last token"]
+rec_labels = np.array(["1st token", "Subject 1st", "Subject 2nd last", "Subject last",
+              "1st Subsequent", "2nd last token", "last token"])
+lab_ord = [1, 2, 3, 6, 4, 5]
+#%%
 def line_CI_plot(val_tsr, rec_labels, figsize=(8, 4), titlestr=""):
     sqrtN = np.sqrt(val_tsr.shape[0])
     layerN = val_tsr.shape[1]
@@ -167,7 +169,11 @@ for key in gradflow_summary:
     plt.show()
     figh = line_CI_plot(gradflow_summary[key], rec_labels,
                 titlestr=f"Mean hidden flow proj on {key} grad")
-    saveallforms(sumdir, f"gradflow_{key}_line_CI")
+    saveallforms(sumdir, f"gradflow_{key}_line_CI", figh)
+    plt.show()
+    figh2 = line_CI_plot(gradflow_summary[key][:, :, lab_ord], rec_labels[lab_ord],
+                        titlestr=f"Mean hidden flow proj on {key} grad")
+    saveallforms(sumdir, f"gradflow_{key}_line_CI_clrmat", figh2)
     plt.show()
 
 #%% Gradient norm of outputs
@@ -179,10 +185,17 @@ for mod_str in mod_strs:
     plt.tight_layout()
     saveallforms(sumdir, f"grad_map_average_{mod_str}")
     plt.show()
+
     figh = line_CI_plot(gradmap_summary[mod_str], rec_labels,
                         titlestr=f"Mean gradient norm for [{mod_str}] output")
-    saveallforms(sumdir, f"grad_line_CI_{mod_str}")
+    saveallforms(sumdir, f"grad_line_CI_{mod_str}", figh)
     plt.show()
+
+    figh2 = line_CI_plot(gradmap_summary[mod_str][:, :, lab_ord], rec_labels[lab_ord],
+                        titlestr=f"Mean gradient norm for [{mod_str}] output")
+    saveallforms(sumdir, f"grad_line_CI_{mod_str}_clrmat", figh2)
+    plt.show()
+
 #%% Gradient norm of attention layer output (excluding layer 0 )
 mod_str = "attn"
 plt.figure(figsize=[8, 4])
@@ -192,9 +205,13 @@ plt.title(f"Mean gradient norm map for [{mod_str}] output")
 plt.tight_layout()
 saveallforms(sumdir, f"grad_map_average_{mod_str}_excl0", )
 plt.show()
-figh = line_CI_plot(gradmap_summary[mod_str][:,1:,:], rec_labels,
+figh = line_CI_plot(gradmap_summary[mod_str][:, 1:, :], rec_labels,
                     titlestr=f"Mean gradient norm for [{mod_str}] output")
 saveallforms(sumdir, f"grad_line_CI_{mod_str}_excl0", figh)
+plt.show()
+figh2 = line_CI_plot(gradmap_summary[mod_str][:, 1:, lab_ord], rec_labels[lab_ord],
+                    titlestr=f"Mean gradient norm for [{mod_str}] output")
+saveallforms(sumdir, f"grad_line_CI_{mod_str}_excl0_clrmat", figh2)
 plt.show()
 # %% Activation norm
 for mod_str in mod_strs:
@@ -208,6 +225,10 @@ for mod_str in mod_strs:
     figh = line_CI_plot(actmap_summary[mod_str], rec_labels,
                         titlestr=f"Mean activation norm for [{mod_str}] output")
     saveallforms(sumdir, f"act_line_CI_{mod_str}", )
+    plt.show()
+    figh2 = line_CI_plot(actmap_summary[mod_str][:,:,lab_ord], rec_labels[lab_ord],
+                        titlestr=f"Mean activation norm for [{mod_str}] output")
+    saveallforms(sumdir, f"act_line_CI_{mod_str}_clrmat", figh2)
     plt.show()
 
 # %% Gradient activation Dot Map of a single layer
@@ -224,6 +245,10 @@ for mod_str in mod_strs:
                         titlestr=f"Mean grad act dot for [{mod_str}] output")
     saveallforms(sumdir, f"grad_act_dot_line_CI_{mod_str}", figh)
     plt.show()
+    figh2 = line_CI_plot(gradactdotmap_summary[mod_str][:,:,lab_ord], rec_labels[lab_ord],
+                        titlestr=f"Mean grad act dot for [{mod_str}] output")
+    saveallforms(sumdir, f"grad_act_dot_line_CI_{mod_str}_clrmat", figh2)
+    plt.show()
 #%% Grad block == Grad MLP, Grad act dot of block - MLP == Grad of block dot Attn + prev block
 gradactdotmap_res = gradactdotmap_summary["block"] - gradactdotmap_summary["mlp"]
 plt.figure(figsize=[8, 4])
@@ -234,24 +259,29 @@ plt.tight_layout()
 saveallforms(sumdir, f"grad_act_dot_map_average_res", )
 plt.show()
 #%%
+# 10 layer moving average of grad act dot product.
 from scipy.ndimage import uniform_filter
 for mod_str in mod_strs:
-    # 10 layer moving average
-    mavg_map = uniform_filter(gradactdotmap_summary[mod_str].mean(dim=0),
-                              size=[10, 1], mode="constant", cval=0.0)
+    # mavg_map = uniform_filter(gradactdotmap_summary[mod_str].mean(dim=0),
+    #                           size=[10, 1], mode="constant", cval=0.0)
+    mavg_tsr = torch.tensor(uniform_filter(gradactdotmap_summary[mod_str],
+                              size=[1, 10, 1], mode="constant", cval=0.0))
     plt.figure(figsize=[8, 4])
-    sns.heatmap(mavg_map.T)
+    sns.heatmap(mavg_tsr.mean(dim=0).T)
     plt.gca().set_yticklabels(rec_labels, rotation=0)
     plt.title(f"Mean grad-act dot map for [{mod_str}] output")
     plt.tight_layout()
     saveallforms(sumdir, f"grad_act_dot_map_average_10Lavg_{mod_str}", )
     plt.show()
 
-    mavg_tsr = uniform_filter(gradactdotmap_summary[mod_str],
-                              size=[1, 10, 1], mode="constant", cval=0.0)
-    figh = line_CI_plot(torch.tensor(mavg_tsr), rec_labels,
+    figh = line_CI_plot(mavg_tsr, rec_labels,
                         titlestr=f"Mean grad act dot for [{mod_str}] output")
     saveallforms(sumdir, f"grad_act_dot_line_CI_10Lavg_{mod_str}", figh)
+    plt.show()
+
+    figh2 = line_CI_plot(mavg_tsr[:,:,lab_ord], rec_labels[lab_ord],
+                        titlestr=f"Mean grad act dot for [{mod_str}] output")
+    saveallforms(sumdir, f"grad_act_dot_line_CI_10Lavg_{mod_str}_clrmat", figh2)
     plt.show()
 # %% Cosine between gradient and activation.
 for mod_str in mod_strs:
@@ -262,6 +292,15 @@ for mod_str in mod_strs:
     plt.title(f"Mean grad-act cosine map for [{mod_str}] output")
     plt.tight_layout()
     saveallforms(sumdir, f"grad_act_cosine_map_average_{mod_str}", )
+    plt.show()
+    figh = line_CI_plot(gradact_cosine, rec_labels,
+                        titlestr=f"Mean grad act cosine for [{mod_str}] output")
+    saveallforms(sumdir, f"grad_act_cosine_line_CI_{mod_str}", figh)
+    plt.show()
+
+    figh2 = line_CI_plot(gradact_cosine[:, :, lab_ord], rec_labels[lab_ord],
+                         titlestr=f"Mean grad act cosine for [{mod_str}] output")
+    saveallforms(sumdir, f"grad_act_cosine_line_CI_{mod_str}_clrmat", figh2)
     plt.show()
 #%% Ratio between gradient norm and activation norm
 mod_str = "block"
