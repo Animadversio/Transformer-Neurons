@@ -11,7 +11,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from copy import deepcopy
-from transformers.models.bert.modeling_bert import BertModel
+# from transformers.models.bert.modeling_bert import BertModel
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model
 from transformers import BertModel, BertForMaskedLM, BertConfig, BertTokenizer
 from core.layer_hook_utils import featureFetcher_module
@@ -26,6 +26,7 @@ model.requires_grad_(False)
 model.eval()
 #%%
 def get_causal_grad_hook(key, gradvar_store):
+    """ add req grad variable to trace gradient. """
     def causal_grad(module, input, output):
         """Substitute the output of certain layer as a fixed representation
         Note: Assume the first output variable is used in downstream computing.
@@ -39,6 +40,7 @@ def get_causal_grad_hook(key, gradvar_store):
 
 
 def get_record_causal_grad_hook(key, gradvar_store, act_store):
+    """Both record activation and add req grad variable to trace gradient. """
     def causal_grad(module, input, output):
         """Substitute the output of certain layer as a fixed representation
         Note: Assume the first output variable is used in downstream computing.
@@ -80,7 +82,7 @@ def forward_gradhook_vars(model, token_ids, module_str="block",
     try:
         outputs = model(token_ids, output_hidden_states=True)
     except:
-        # Need to remove hooks or it will keep raising error.
+        # Need to clean up (remove hooks) or it will keep raising error.
         for hook_h in hook_hs:
             hook_h.remove()
         raise
@@ -141,14 +143,14 @@ maxlogit = outputs.logits[0, -1, max_ids]
 print(text)
 top_token = tokenizer.convert_ids_to_tokens(max_ids.item()).replace('\u0120','')
 print(f"Top token is '{top_token}', with logit {maxlogit.item():.3f}")
-for sub_module in ["block", "attn", "mlp", "ln_2"]:
+for sub_module in ["block", "attn", "mlp", "ln_2"]: #
     act_store = [*act_stores[sub_module].values()]
     grad_maps = torch.autograd.grad(maxlogit,
                                     [*gradvar_stores[sub_module].values()], retain_graph=True, )  # create_graph=True
-    if grad_maps[0].ndim == 3:
+    if grad_maps[0].ndim == 3:  # "block", "attn",
         grad_map_tsr = torch.cat(grad_maps, dim=0)
         act_map_tsr = torch.cat(act_store, dim=0)
-    elif grad_maps[0].ndim == 2:
+    elif grad_maps[0].ndim == 2:  # "mlp", "ln_2", the Batch dim is suppressed
         grad_map_tsr = torch.stack(grad_maps, dim=0)
         act_map_tsr = torch.stack(act_store, dim=0)
     else:
@@ -242,7 +244,7 @@ k1000_data = json.load(open("dataset\\known_1000.json", 'r'))
 import matplotlib
 matplotlib.use("Agg")
 #%% 990
-for i in range(991, len(k1000_data)):
+for i in range(990,991):#range(991, len(k1000_data)):
     text = k1000_data[i]['prompt']
     token_ids = tokenizer.encode(text, return_tensors='pt')
     tokens = tokenizer.convert_ids_to_tokens(token_ids[0])
@@ -262,7 +264,7 @@ for i in range(991, len(k1000_data)):
     gradmapsavedict = {}
     actmapsavedict = {}
     for sub_module in ["block", "attn", "mlp", "ln_2"]:
-        act_store = [*act_stores[sub_module].values()]
+        act_store = [ * act_stores[sub_module].values()]
         grad_maps = torch.autograd.grad(maxlogit,
                                         [*gradvar_stores[sub_module].values()], retain_graph=True, )  # create_graph=True
         if grad_maps[0].ndim == 3:
@@ -281,6 +283,7 @@ for i in range(991, len(k1000_data)):
         actmapsavedict[sub_module]  = act_map_norm_layers
         plt.figure()
         sns.heatmap(grad_map_norm_layers.T)
+        plt.gca().set_yticks(0.5 + np.arange(len(tokens)))
         plt.gca().set_yticklabels(tokens, rotation=0)
         plt.xlabel("Layer")
         plt.title(f"Gradient L2 norm heat map ({sub_module})")
@@ -291,6 +294,7 @@ for i in range(991, len(k1000_data)):
 
         plt.figure()
         sns.heatmap(act_map_norm_layers.T)
+        plt.gca().set_yticks(0.5 + np.arange(len(tokens)))
         plt.gca().set_yticklabels(tokens, rotation=0)
         plt.xlabel("Layer")
         plt.title(f"Activation L2 norm heat map ({sub_module})")
@@ -301,6 +305,7 @@ for i in range(991, len(k1000_data)):
 
         plt.figure()
         sns.heatmap(grad_map_norm_layers.T / act_map_norm_layers.T)
+        plt.gca().set_yticks(0.5 + np.arange(len(tokens)))
         plt.gca().set_yticklabels(tokens, rotation=0)
         plt.xlabel("Layer")
         plt.title(f"Grad norm / Activation norm raio heat map ({sub_module})")
