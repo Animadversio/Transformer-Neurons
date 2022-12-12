@@ -54,7 +54,10 @@ class featureFetcher_module:
                     if ingraph else [inp.detach().to(store_device) for inp in input]
         else:
             def hook(model, input, output):
-                self.activations[name] = output.to(store_device) if ingraph else output.detach().to(store_device)
+                if type(output) is tuple:
+                    self.activations[name] = output[0].to(store_device) if ingraph else output[0].detach().to(store_device)
+                else:
+                    self.activations[name] = output.to(store_device) if ingraph else output.detach().to(store_device)
         # else:
         #     def hook(model, input, output):
         #         if len(output.shape) == 4:
