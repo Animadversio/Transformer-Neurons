@@ -38,7 +38,7 @@ def get_causal_grad_hook(key, gradvar_store):
 def forward_gradhook_vars(model, token_ids):
     gradvar_store = {}  # store the gradient variable, layer num as key
     hook_hs = []
-    for layeri in range(12):
+    for layeri in range(len(model.transformer.h)):
         target_module = model.transformer.h[layeri]
         hook_fun = get_causal_grad_hook(layeri, gradvar_store)  # get_clamp_hook(fixed_hidden_states, fix_mask)
         hook_h = target_module.register_forward_hook(hook_fun)
@@ -58,8 +58,11 @@ def forward_gradhook_vars(model, token_ids):
         return outputs, gradvar_store
 
 
-# text = "The Space Needle is located in downtown"
+#%% text = "The Space Needle is located in downtown"
 text = "Vatican is located in the city of"
+text = "Edmund Neupert, performing on the"
+text = "Madame de Monetesson died in the city of"
+text = "Windows Media Player is developed by"
 token_ids = tokenizer.encode(text, return_tensors='pt')
 tokens = tokenizer.convert_ids_to_tokens(token_ids[0])
 tokens = [t.replace("Ġ", "") for t in tokens]
@@ -75,7 +78,7 @@ print(text)
 top_token = tokenizer.convert_ids_to_tokens(max_ids.item()).replace('\u0120','')
 print(f"Top token is '{top_token}', with logit {maxlogit.item():.3f}")
 torch.save(outputs, join(expdir, "model_outputs_hiddens.pt"))
-#%% Compute first order gradient
+#% Compute first order gradient
 grad_maps = torch.autograd.grad(maxlogit,
                 [*gradvar_store.values()], retain_graph=True,)  #  create_graph=True
 grad_map_tsr = torch.cat(grad_maps, dim=0)

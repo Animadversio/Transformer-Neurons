@@ -128,6 +128,7 @@ def forward_record_gradhook_vars_all(model, token_ids, ):
 
 savedir = r"F:\insilico_exps\GPT-XL_grad_trace"
 #%%
+savedir = r"F:\insilico_exps\GPT-XL_hessian"
 
 text = "The official residence of the Pope, Vatican is located in the city of"
 token_ids = tokenizer.encode(text, return_tensors='pt')
