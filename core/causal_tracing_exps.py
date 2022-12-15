@@ -21,29 +21,11 @@ probe_set = [
     ("The Eiffel Tower is located in", "The Eiffel Tower"),
     ("The headquarter of Zillow is in downtown", "The headquarter of Zillow"),
     ("Otto von Bismarck worked in the city of", "Otto von Bismarck"),
-    # ("Claude d'Annebault is a citizen of", "Claude d'Annebault"),
-    # ("Iron Man is affiliated with", "Iron Man"),
+    ("Claude d'Annebault is a citizen of", "Claude d'Annebault"),
+    ("Iron Man is affiliated with", "Iron Man"),
 ]
 #%%
 """GPT2 type models"""
-model_str = "gpt2-xl"
-tokenizer = GPT2Tokenizer.from_pretrained("gpt2-xl")
-model = GPT2LMHeadModel.from_pretrained("gpt2-xl")
-#%%
-model.requires_grad_(False)
-model.eval().to(device)
-#%%
-# text, subj_str = "Vatican is located in the city of", "Vatican"
-text, subj_str = "The Space Needle is located in downtown", "The Space Needle"
-figdir = join(figroot, model_str, text.replace(" ", "_")[0:25])
-os.makedirs(figdir, exist_ok=True)
-subj_span = find_substr_loc(tokenizer, text, subj_str)
-subject_loc = [*range(subj_span[0], subj_span[1])]
-df, degrade_map, clamp_map, degrprob_map, clamprob_map = \
-    causal_trace_pipeline(text, model, tokenizer, subject_loc,
-                          noise_batch=10, noise_std=0.15, device=device)
-df.to_csv(join(figdir, "causal_trace_data.csv"))
-visualize_causal_trace(text, tokenizer, df, "", figdir=figdir, subject_loc=subject_loc)
 #%%
 for model_str in ["gpt2", "gpt2-large", "gpt2-xl", ]:
     tokenizer = GPT2Tokenizer.from_pretrained(model_str)
@@ -72,6 +54,50 @@ from transformers import BertTokenizer, BertForMaskedLM
 from core.causal_tracing_lib import causal_trace_pipeline_bert, embed_hidden_clean_bert
 #%%
 device = "cuda"
+#%%
+for model_str in ["bert-base", "bert-large" ]:
+    tokenizer = BertTokenizer.from_pretrained(model_str+'-uncased')
+    model = BertForMaskedLM.from_pretrained(model_str+'-uncased')
+    model.requires_grad_(False)
+    model.eval().to(device)
+    noise_std = 3 * model.bert.embeddings.word_embeddings.weight.std().item()
+    print(model_str, "Noise scale=", noise_std)
+    figname = ""
+    for text, subj_str in probe_set:
+        text = text + " [MASK]."
+        figdir = join(figroot, model_str, text.replace(" ", "_")[0:25])
+        os.makedirs(figdir, exist_ok=True)
+        subj_span = find_substr_loc(tokenizer, text, subj_str, uncase=True)
+        subject_loc = [*range(subj_span[0], subj_span[1])]
+        df, degrade_map, clamp_map, degrprob_map, clamprob_map = \
+            causal_trace_pipeline_bert(text, model, tokenizer, subject_loc,
+                                       noise_batch=10, noise_std=noise_std, device=device,)
+        df.to_csv(join(figdir, "causal_trace_data.csv"))
+        visualize_causal_trace(text, tokenizer, df, figname, figdir=figdir, subject_loc=subject_loc)
+
+
+#%% Dev zone
+#%%
+model_str = "gpt2-xl"
+tokenizer = GPT2Tokenizer.from_pretrained("gpt2-xl")
+model = GPT2LMHeadModel.from_pretrained("gpt2-xl")
+#%%
+model.requires_grad_(False)
+model.eval().to(device)
+#%%
+# text, subj_str = "Vatican is located in the city of", "Vatican"
+text, subj_str = "The Space Needle is located in downtown", "The Space Needle"
+figdir = join(figroot, model_str, text.replace(" ", "_")[0:25])
+os.makedirs(figdir, exist_ok=True)
+subj_span = find_substr_loc(tokenizer, text, subj_str)
+subject_loc = [*range(subj_span[0], subj_span[1])]
+df, degrade_map, clamp_map, degrprob_map, clamprob_map = \
+    causal_trace_pipeline(text, model, tokenizer, subject_loc,
+                          noise_batch=10, noise_std=0.15, device=device)
+df.to_csv(join(figdir, "causal_trace_data.csv"))
+visualize_causal_trace(text, tokenizer, df, "", figdir=figdir, subject_loc=subject_loc)
+#%%
+
 model_str = "BERT-base"
 # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # model = BertForMaskedLM.from_pretrained("bert-base-uncased")
@@ -98,24 +124,3 @@ df, degrade_map, clamp_map, degrprob_map, clamprob_map = \
                                noise_batch=10, noise_std=noise_std, device=device,)
 df.to_csv(join(figdir, "causal_trace_data.csv"))
 visualize_causal_trace(text, tokenizer, df, figname, figdir=figdir, subject_loc=subject_loc)
-#%%
-for model_str in ["bert-base", "bert-large" ]:
-    tokenizer = BertTokenizer.from_pretrained(model_str+'-uncased')
-    model = BertForMaskedLM.from_pretrained(model_str+'-uncased')
-    model.requires_grad_(False)
-    model.eval().to(device)
-    noise_std = 3 * model.bert.embeddings.word_embeddings.weight.std().item()
-    print(model_str, "Noise scale=", noise_std)
-    figname = ""
-    for text, subj_str in probe_set:
-        text = text + " [MASK]."
-        figdir = join(figroot, model_str, text.replace(" ", "_")[0:25])
-        os.makedirs(figdir, exist_ok=True)
-        subj_span = find_substr_loc(tokenizer, text, subj_str, uncase=True)
-        subject_loc = [*range(subj_span[0], subj_span[1])]
-        df, degrade_map, clamp_map, degrprob_map, clamprob_map = \
-            causal_trace_pipeline_bert(text, model, tokenizer, subject_loc,
-                                       noise_batch=10, noise_std=noise_std, device=device,)
-        df.to_csv(join(figdir, "causal_trace_data.csv"))
-        visualize_causal_trace(text, tokenizer, df, figname, figdir=figdir, subject_loc=subject_loc)
-
