@@ -27,7 +27,7 @@ probe_set = [
 #%%
 """GPT2 type models"""
 #%%
-for model_str in ["gpt2", "gpt2-large", "gpt2-xl", ]:
+for model_str in ["gpt2-medium", ]: # "gpt2", "gpt2-large", "gpt2-xl",
     tokenizer = GPT2Tokenizer.from_pretrained(model_str)
     model = GPT2LMHeadModel.from_pretrained(model_str)
     model.requires_grad_(False)
@@ -46,6 +46,29 @@ for model_str in ["gpt2", "gpt2-large", "gpt2-xl", ]:
         df.to_csv(join(figdir, "causal_trace_data.csv"))
         visualize_causal_trace(text, tokenizer, df, figname, figdir=figdir, subject_loc=subject_loc)
 
+#%%
+import json
+k1000_data = json.load(open("dataset\\known_1000.json", 'r'))
+for model_str in ["gpt2-xl", ]:  # "gpt2", "gpt2-medium", "gpt2-large",
+    tokenizer = GPT2Tokenizer.from_pretrained(model_str)
+    model = GPT2LMHeadModel.from_pretrained(model_str)
+    model.requires_grad_(False)
+    model.eval().to(device)
+    noise_std = 3 * model.transformer.wte.weight.std().item()
+    print(model_str, "Noise scale=", noise_std)
+    figname = ""
+    for i in tqdm(range(0, len(k1000_data))):
+        text = k1000_data[i]['prompt']
+        subj_str = k1000_data[i]['subject']
+        figdir = join(figroot, model_str, "fact%04d-"%(i)+text.replace(" ", "_")[0:25])
+        os.makedirs(figdir, exist_ok=True)
+        subj_span = find_substr_loc(tokenizer, text, subj_str)
+        subject_loc = [*range(subj_span[0], subj_span[1])]
+        df, degrade_map, clamp_map, degrprob_map, clamprob_map = \
+            causal_trace_pipeline(text, model, tokenizer, subject_loc,
+                                  noise_batch=10, noise_std=noise_std, device=device)
+        df.to_csv(join(figdir, "causal_trace_data.csv"))
+        visualize_causal_trace(text, tokenizer, df, figname, figdir=figdir, subject_loc=subject_loc)
 
 #%%
 """BERT type models"""

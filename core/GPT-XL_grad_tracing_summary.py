@@ -32,6 +32,7 @@ def match_subject_decode(tokenizer, token_ids, subject_str):
 
 
 def match_subject(tokens, subject_str):
+    """Obsolete"""
     for subj_strt in range(len(tokens)):
         subj_residue = subject_str
         for subj_end in range(subj_strt + 1, len(tokens)):

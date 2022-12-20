@@ -194,6 +194,7 @@ def visualize_causal_trace(text, tokenizer, df, figname, figdir="", subject_loc=
 
     plt.figure(figsize=(7, 4.5))
     sns.heatmap((clamp_map - degrade_map).T, annot=False, fmt=".1e")
+    plt.gca().set_yticks(0.5 + torch.arange(len(tokens)))
     plt.gca().set_yticklabels(tokens, rotation=0)
     plt.ylabel(None)
     plt.title("logits difference: clamp - degrade")
@@ -203,6 +204,7 @@ def visualize_causal_trace(text, tokenizer, df, figname, figdir="", subject_loc=
 
     plt.figure(figsize=(7, 4.5))
     sns.heatmap((clamprob_map - degrprob_map).T, annot=False, fmt=".1e")
+    plt.gca().set_yticks(0.5 + torch.arange(len(tokens)))
     plt.gca().set_yticklabels(tokens, rotation=0)
     plt.ylabel(None)
     plt.title("prob difference: clamp - degrade")

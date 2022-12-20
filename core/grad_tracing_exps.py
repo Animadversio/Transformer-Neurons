@@ -21,7 +21,7 @@ probe_set = [
     ("Iron Man is affiliated with", "Iron Man"),
 ]
 #%%
-for model_str in ["gpt2", "gpt2-large", "gpt2-xl", ]:
+for model_str in ["gpt2-medium", ]: # "gpt2", "gpt2-large", "gpt2-xl",
     tokenizer = GPT2Tokenizer.from_pretrained(model_str)
     model = GPT2LMHeadModel.from_pretrained(model_str)
     model.requires_grad_(False)
