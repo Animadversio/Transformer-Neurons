@@ -13,11 +13,12 @@ configuration = model.config
 #%%
 import torch
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
-
-tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-model = GPT2LMHeadModel.from_pretrained("gpt2")
+model_ver = "gpt2-large"  # "gpt2"
+tokenizer = GPT2Tokenizer.from_pretrained(model_ver)
+model = GPT2LMHeadModel.from_pretrained(model_ver)
 #%%
-inputs = tokenizer("The vatican is in the city of", return_tensors="pt")
+text = "The vatican is in the city of"
+inputs = tokenizer(text, return_tensors="pt")
 with torch.no_grad():
     outputs = model(**inputs, labels=inputs["input_ids"], output_hidden_states=True)
 loss = outputs.loss
@@ -26,7 +27,7 @@ all_hidden = (outputs.hidden_states)
 #%%
 for li in range(len(all_hidden)):
     logits_lyr = model.lm_head(all_hidden[li])
-    topvals, topidxs = torch.topk(logits_lyr[0, -1, ], 10)
+    topvals, topidxs = torch.topk(logits_lyr[0, -1, ], 8)
     toptokens = tokenizer.convert_ids_to_tokens(topidxs)
     print(li, [tok.replace("Ġ","") for tok in toptokens])
     # print(li, [tok for tok in toptokens])
