@@ -135,14 +135,32 @@ layer_ids = torch.cat(layer_ids)
 frac_vec = torch.cat(sparsity_col)
 spars_df = pd.DataFrame({"layer": layer_ids, "fraction":frac_vec})
 #%%
+#%% Record the fraction of activated hidden units in MLP
+layer_ids = []
+sparsity_col = []
+for layer_i in range(12):
+    acttsr = fetcher[f'GPT2_B{layer_i}_proj']
+    fractions = (acttsr > thresh).sum(dim=(0,1)) / acttsr.size(1)
+    sparsity_col.append(fractions)
+    layer_ids.append(layer_i * torch.ones_like(fractions, dtype=torch.int))
+
+layer_ids = torch.cat(layer_ids)
+frac_vec = torch.cat(sparsity_col)
+spars_df_proj = pd.DataFrame({"layer": layer_ids, "fraction":frac_vec})
+#%%
 plt.figure(figsize=[6, 8])
 sns.violinplot(data=spars_df, x="layer", y="fraction", cut=0)
-plt.title("GPT2 MLP unit activated fraction")
+plt.title("GPT2 MLP hidden unit activated fraction")
 plt.show()
 #%%
 sns.lineplot(data=spars_df, x="layer", y="fraction", )
-plt.title("GPT2 MLP unit activated fraction")
+plt.title("GPT2 MLP hidden unit activated fraction")
 plt.show()
+#%%
+sns.lineplot(data=spars_df_proj, x="layer", y="fraction", )
+plt.title("GPT2 MLP proj out unit activated fraction")
+plt.show()
+"""The projection out unit roughly has half unit > 0 half < 0 """
 #%%
 acttsr = fetcher[f'GPT2_B{layer_num}_act']
 unit_idx = torch.randint(3000, size=(1,)).item() #2000
